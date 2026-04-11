@@ -1,88 +1,115 @@
 #pragma once
 #include <WiFi.h>
 #include <Preferences.h>
-#include "BluetoothSerial.h"
+#include <BluetoothSerial.h>
+#include <ArduinoJson.h>
 
 class WifiManager {
   private:
     BluetoothSerial SerialBT;
     Preferences pref;
-    String _ssid;
-    String _pass;
 
   public:
     void begin() {
-        WiFi.mode(WIFI_STA);
-        
         pref.begin("wifi-conf", true);
-        _ssid = pref.getString("ssid", "");
-        _pass = pref.getString("pass", "");
+        String ssid = pref.getString("ssid", "");
+        String pass = pref.getString("pass", "");
         pref.end();
 
-        if (_ssid != "" && _ssid != "NULL") {
-            Serial.printf("Trying to connect to: %s\n", _ssid.c_str());
-            WiFi.begin(_ssid.c_str(), _pass.c_str());
-
-            uint8_t count = 0;
-            while (WiFi.status() != WL_CONNECTED && count < 20) {
-                delay(500);
-                Serial.print(".");
-                count++;
-            }
-
-            if (WiFi.status() == WL_CONNECTED) {
-                Serial.println("\nSuccessful connection!");
-                Serial.print("IP: "); Serial.println(WiFi.localIP());
-                return;
+        if (ssid != "") {
+            Serial.print("[WiFi] Conectando a: "); Serial.println(ssid);
+            WiFi.begin(ssid.c_str(), pass.c_str());
+            int retry = 0;
+            while (WiFi.status() != WL_CONNECTED && retry < 20) {
+                delay(500); Serial.print("."); retry++;
             }
         }
-        
-        Serial.println("\nCould not connect. Starting Bluetooth...");
-        configViaBluetooth();
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\n[WiFi] WiFi Conectado");
+            Serial.print("[WiFi] IP: "); Serial.println(WiFi.localIP());
+            return;
+        }
+
+        configBT();
     }
 
-    void configViaBluetooth() {
-        SerialBT.begin("ESP32_Config");
-        Serial.println("Send: SSID,PASSWORD");
+    void configBT() {
+        if (!SerialBT.hasClient()) SerialBT.begin("ESP32_Config_App");
+        Serial.println("\n[WiFi] Modo Configuración BT Activo. Conectate con 'ESP32_Config_App'");
 
-        while (true) {
+        while (WiFi.status() != WL_CONNECTED) {
             if (SerialBT.available()) {
-                String credientials = SerialBT.readStringUntil('\n');
-                credientials.trim();
-                int comaIndex = credientials.indexOf(',');
+                String input = SerialBT.readStringUntil('\n'); 
+                input.trim();
+                if (input.length() > 0) {
+                    StaticJsonDocument<256> doc;
+                    DeserializationError error = deserializeJson(doc, input);
+                    if (error) {
+                        SerialBT.println("{\"status\":\"error\", \"msg\":\"JSON mal formado: " + String(error.c_str()) + "\"}");
+                        continue; 
+                    }
+                    if (!doc.containsKey("type") || doc["type"].isNull()) {
+                        SerialBT.println("{\"status\":\"error\", \"msg\":\"Falta el campo type\"}");
+                        continue;
+                    }
 
-                if (comaIndex != -1) {
-                    _ssid = credientials.substring(0, comaIndex);
-                    _pass = credientials.substring(comaIndex + 1);
-
-                    Serial.printf("Received via BT. SSID: %s\n", _ssid.c_str());
-                    WiFi.begin(_ssid.c_str(), _pass.c_str());
-
-                    if (WiFi.waitForConnectResult() == WL_CONNECTED) {
-                        pref.begin("wifi-conf", false);
-                        pref.putString("ssid", _ssid);
-                        pref.putString("pass", _pass);
-                        pref.end();
-
-                        String message = "Success. IP: " + WiFi.localIP().toString();
-                        SerialBT.println(message);
-                        Serial.println(message);
-                        break;
-                    } else {
-                        SerialBT.println("Error: Could not connect to that network. Retry.");
+                    if (doc["type"] == "scan") {
+                        String jsonResponse = getScanResultsJSON();
+                        SerialBT.println(jsonResponse);
+                    }
+                    else if (doc["type"] == "wifi") {
+                        String s = doc["ssid"];
+                        String p = doc["pass"];
+                        WiFi.disconnect(true);
+                        delay(100); 
+                        Serial.print("[WiFi] Conectando a: "); Serial.println(s);
+                        WiFi.begin(s.c_str(), p.c_str());
+                        if (WiFi.waitForConnectResult() == WL_CONNECTED) {
+                            pref.begin("wifi-conf", false);
+                            pref.putString("ssid", s);
+                            pref.putString("pass", p);
+                            pref.end();
+                            
+                            String localIP = WiFi.localIP().toString();
+                            Serial.println("\n[WiFi] WiFi Conectado. IP: " + localIP);
+                            SerialBT.println("{ \"status\": \"ok\", \"msg\": \"WiFi Conectado\", \"ip\": \"" + localIP + "\" }");
+                            delay(500);
+                            SerialBT.end();
+                            break;
+                        }
+                        else {
+                            Serial.println("[WiFi] Fallo de conexión a la red");
+                            SerialBT.println("{\"status\":\"error\", \"msg\":\"Fallo de conexión a la red\"}");
+                        }
+                    }
+                    else {
+                        SerialBT.println("{\"status\":\"error\", \"msg\":\"Tipo no valido\"}");
                     }
                 }
             }
             delay(100);
         }
-        SerialBT.end();
     }
 
-    void resetSettings() {
-        Serial.println("[WiFi] !!! DELETING CONFIGURATION !!!");
+    String getScanResultsJSON() {
+        int n = WiFi.scanNetworks();
+        StaticJsonDocument<768> doc;
+        doc["type"] = "scan_res";
+        JsonArray nets = doc.createNestedArray("networks");
+        int limit = (n > 10) ? 10 : n;
+        for (int i = 0; i < limit; i++) {
+            nets.add(WiFi.SSID(i));
+        }
+        String out;
+        serializeJson(doc, out);
+        return out;
+    }
+
+    void clearCredentials() {
         pref.begin("wifi-conf", false);
         pref.clear();
         pref.end();
-        Serial.println("[WiFi] CONFIGURATION DELETED");
     }
+
 };
