@@ -3,14 +3,17 @@
 #include <Preferences.h>
 #include <BluetoothSerial.h>
 #include <ArduinoJson.h>
+#include "ResetHandler.h"
 
 class WifiManager {
   private:
     BluetoothSerial SerialBT;
     Preferences pref;
+    ResetHandler* _rh;
 
   public:
-    void begin() {
+    void begin(ResetHandler* rh) {
+        _rh = rh;
         pref.begin("wifi-conf", true);
         String ssid = pref.getString("ssid", "");
         String pass = pref.getString("pass", "");
@@ -21,6 +24,7 @@ class WifiManager {
             WiFi.begin(ssid.c_str(), pass.c_str());
             int retry = 0;
             while (WiFi.status() != WL_CONNECTED && retry < 20) {
+                if (_rh) _rh->check();
                 delay(500); Serial.print("."); retry++;
             }
         }
@@ -39,6 +43,7 @@ class WifiManager {
         Serial.println("\n[WiFi] Modo Configuración BT Activo. Conectate con 'ESP32_Config_App'");
 
         while (WiFi.status() != WL_CONNECTED) {
+            if (_rh) _rh->check();
             if (SerialBT.available()) {
                 String input = SerialBT.readStringUntil('\n'); 
                 input.trim();
@@ -88,7 +93,7 @@ class WifiManager {
                     }
                 }
             }
-            delay(100);
+            delay(10);
         }
     }
 

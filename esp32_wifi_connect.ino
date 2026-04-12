@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include "WifiManager.h"
 #include "ResetHandler.h"
 
@@ -18,7 +17,10 @@ void setup() {
     delay(1000);
     Serial.println("--- DISPOSITIVO IOT INICIADO ---");
     systemReset.begin();
-    myWifi.begin();
+    if (digitalRead(0) == LOW) {
+        globalReset();
+    }
+    myWifi.begin(&systemReset);
 }
 
 void loop() {

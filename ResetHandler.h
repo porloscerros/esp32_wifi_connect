@@ -10,7 +10,7 @@ class ResetHandler {
     bool _isPressing;
 
   public:
-    ResetHandler(int pin, void (*callback)(), unsigned long duration = 4000) 
+    ResetHandler(int pin, void (*callback)(), unsigned long duration = 4000)
         : _pin(pin), _callback(callback), _duration(duration), _startTime(0), _isPressing(false) {}
 
     void begin() {
