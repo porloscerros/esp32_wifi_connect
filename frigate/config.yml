@@ -1,0 +1,35 @@
+mqtt:
+  host: mosquitto
+  user: ha
+  password: tu_password
+
+# Aceleración por hardware NVIDIA
+ffmpeg:
+  hwaccel_args:
+    - -hwaccel
+    - nvdec
+
+cameras:
+  entrada: #SH029
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:888888@192.168.0.101:8554/profile0
+          roles:
+            - detect
+            - rtmp
+    detect:
+      width: 2304
+      height: 1296
+      fps: 15
+
+  patio: #SH037
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:888888@192.168.0.102:8554/profile0
+          roles:
+            - detect
+            - rtmp
+    detect:
+      width: 1280
+      height: 720
+      fps: 15

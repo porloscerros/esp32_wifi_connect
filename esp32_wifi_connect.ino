@@ -1,7 +1,9 @@
 #include "WifiManager.h"
+#include "MqttService.h"
 #include "ResetHandler.h"
 
 WifiManager myWifi;
+MqttService mqtt;
 
 void globalReset() {
     Serial.println("\n[SYSTEM] RESET DE FÁBRICA...");
@@ -21,8 +23,12 @@ void setup() {
         globalReset();
     }
     myWifi.begin(&systemReset);
+    mqtt.begin();
 }
 
 void loop() {
     systemReset.check();
+    if (WiFi.status() == WL_CONNECTED) {
+        mqtt.handle();
+    }
 }
