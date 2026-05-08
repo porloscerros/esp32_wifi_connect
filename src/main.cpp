@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "WifiManager.h"
 #include "ResetHandler.h"
 
